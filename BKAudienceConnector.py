@@ -17,12 +17,8 @@ import base64
 import json
 import random
 import http
-import multiprocessing
-import numpy as np
-import pandas as pd
-from functools import partial
-class BK_API:
 
+class BK_API:
     headers = {"Accept":"application/json","Content-type":"application/json"}
     #--------------------------------------------------------------------------------------------------------------
     @classmethod
@@ -54,34 +50,34 @@ class BK_API:
         """
         stringToSign = method
         parsedUrl = urlparse(url)
-        #print (parsedUrl)
+        
         stringToSign += parsedUrl.path
         # splitting the query into array of parameters separated by the '&' character
-        #print parsedUrl.query
+
         qP = parsedUrl.query.split('&')
-        #print qP
+
 
         if len(qP) > 0:
             for  qS in qP:
                 qP2 = qS.split('=', 1)
-                #print qP2
+
                 if len(qP2) > 1:
                     stringToSign += qP2[1]
 
-        #print stringToSign
+
         if data != None :
             stringToSign += data
-        #print ("\nString to be Signed:\n" + stringToSign)
+
 
         # Encoding for hmac method
         stringToSign = stringToSign.encode("utf-8")
         h = hmac.new(bksecretkey.encode("utf-8"), stringToSign, hashlib.sha256)
 
         s = base64.standard_b64encode(h.digest())
-        #print ("\nRaw Method Signature:\n" + s.decode("utf-8") )
+
 
         u = urllib.parse.quote(s.decode("utf-8"))
-        #print ("\nURL Encoded Method Signature (bksig):\n" + u)
+
 
         newUrl = url
         if url.find('?') == -1 :
@@ -90,7 +86,7 @@ class BK_API:
             newUrl += '&'
 
         newUrl += 'bkuid=' + bkuid + '&bksig=' + u
-        #print("Signed URL: "+newUrl)
+
         return newUrl
 
     @classmethod
@@ -131,73 +127,5 @@ class BK_API:
 
         except urllib.error.HTTPError as e:
             raise ConnectionError("HTTP error: %d %s \n ERROR: %s" % (e.code, str(e),e.read()))
-            #print ("\nHTTP error: %d %s" % (e.code, str(e)) )
-            #print ("ERROR: ", e.read())
-            #return "{}"
         except urllib.error.URLError as e:
             raise ConnectionError("Network error: %s \n ERROR: %s" % (e.reason.args[1], e.read()))
-            #print ("Network error: %s" % e.reason.args[1])
-            #print ("ERROR: ", e.read())
-            #return "{}"
-
-class BKAudienceCall(BK_API):
-    @classmethod
-    def BKAudienceList(cls,pid:str,bkuid:str, bksecretkey:str)-> dict:
-        """
-        This function is used to consult the complete list of all Audience asociated with
-        certain pid.
-        Here in this function it is not necessary to introduce an Url since we take
-        automatically the url correspondent to the API method.
-        The result is a Dictionary (JSON type)
-        """
-        Url = "http://services.bluekai.com/Services/WS/audiences?pid="+pid
-        signedUrl = cls.InputBuilder(bkuid=bkuid, bksecretkey=bksecretkey, url=Url, method="GET", data=None)
-        Request = cls.doRequest(url=signedUrl, method="GET", data=None)
-        r1 = json.loads(Request)
-        return r1
-    @classmethod
-    def BKAudienceInfo(cls,pid:str,audienceID:str, bkuid:str, bksecretkey:str)-> dict:
-        """
-        This method is used to consult a specific information related to an audienceID
-        If you do not have the audienceID it is not possible to use this method.
-        The result is a Dictionary (JSON type)
-        """
-        Url = "http://services.bluekai.com/Services/WS/audiences/"+audienceID+"/?pid="+pid
-        signedUrl = cls.InputBuilder(bkuid, bksecretkey, Url, "GET", None)
-        Request = cls.doRequest(url=signedUrl, method="GET", data=None)
-        r1 = json.loads(Request)
-        return r1
-    @classmethod
-    def Consult_Single_Audience(cls, audienceID:str, pid:str, bkuid:str, bksecretkey:str)-> list:
-        """
-        The purpose of this method is to simply parallelize the requests via the BK API
-        Here the important thing about this function is that we take only the fields correspondent
-        to  'name', 'reach', 'price', 'status'. Here we let this explicit to be modified when ever
-        we want.
-        Note: It is important to note that taking more fields does not affect the performance of the code,
-        so don't worry about taking more fields from the request.
-        """
-        try:
-            d=cls.BKAudienceInfo(pid=pid, audienceID=audienceID, bkuid=bkuid,bksecretkey= bksecretkey)
-            return [d["name"],d['reach'],d['price'],d['status']]
-        except:
-            return ["Error",0,0.0,""]
-
-    @classmethod
-    def GetData_Parallel(cls,pid:str, bkuid:str, bksecretkey:str,List_ids_Audiences:list ,Processors:int = multiprocessing.cpu_count())-> pd.DataFrame:
-        """
-        This method is designed simply to process in parallel the multiple request. since a partner could have a lot of
-        audiences it is important to consult them very quickly. So far this is an easy to tackle the problem and quite fast
-        The default value of the consult is the number of cores in the machine used.
-        For my machine (8 cores) it takes around 1 min 20 seconds to consult 609 audiences.
-        The speed-up is approximatelly of X (number of cores -1)
-        """
-        with multiprocessing.Pool(Processors) as p:
-            Partial_function = partial(cls.Consult_Single_Audience,pid=pid,bkuid=bkuid,bksecretkey= bksecretkey)
-            request=np.array(p.map(Partial_function,List_ids_Audiences))
-        df=pd.DataFrame(data=request,columns=["Name","Reach","Price","Status"])
-        return df
-# a=BKAudienceCall()
-# bkuid = '72c487d4f0318706ce96a0ebe47b906342cb0a2e3610fe182746602c3be6d016' #Web Service User Key
-# bksecretkey = '90388366ed94cfaea8ee163e0c64200a587974ce7492ec827b33e84ba644bad0'#Web Service Private Key
-# print(a.BKAudienceList(pid="4355",bkuid=bkuid,bksecretkey=bksecretkey))
